@@ -272,7 +272,9 @@ impl Tray {
         }
         let px = r
             .data
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .take(w * h)
             .map(|b| 0xFF00_0000 | (b[2] as u32) << 16 | (b[1] as u32) << 8 | b[0] as u32)
             .collect();

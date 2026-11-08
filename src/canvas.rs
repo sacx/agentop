@@ -149,7 +149,7 @@ impl Canvas {
         let mut out = Vec::with_capacity(self.px.len() * 4);
         for &p in &self.px {
             let a = p >> 24;
-            let un = |c: u32| if a == 0 { 0 } else { ((c * 255 + a / 2) / a).min(255) as u8 };
+            let un = |c: u32| (c * 255 + a / 2).checked_div(a).unwrap_or(0).min(255) as u8;
             out.extend_from_slice(&[a as u8, un((p >> 16) & 255), un((p >> 8) & 255), un(p & 255)]);
         }
         out
