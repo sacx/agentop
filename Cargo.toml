@@ -1,0 +1,26 @@
+[package]
+name = "agentop"
+version = "0.1.0"
+edition = "2021"
+description = "See what your AI coding agents (claude, codex, gemini, agy, opencode, hermes) are doing: tray icon, polybar/i3bar block and TUI dashboard"
+license = "MIT"
+repository = "https://github.com/sacx/agentop"
+readme = "README.md"
+keywords = ["ai", "agents", "tray", "polybar", "monitor"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ratatui = { version = "0.29", default-features = false, features = ["crossterm"] }
+x11rb = "0.13"
+ab_glyph = "0.2"
+libc = "0.2"
+ksni = { version = "0.3", default-features = false, features = ["blocking", "async-io"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
