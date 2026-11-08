@@ -5,6 +5,8 @@ dashboard for **Claude Code, Codex, Gemini CLI, Antigravity (agy), opencode and 
 one static Rust binary (~3 MB). There's no daemon, the tray uses about 10 MB of RAM, and it works
 on X11 and Wayland.
 
+![agentop dashboard](images/agentop.png)
+
 - **Tray icon**: a badge with the number of busy agents (green), agents waiting for you (amber),
   or a grey ring when everything is idle. Hover or open the menu for the per-agent list, click to
   open the dashboard, and click an agent to jump to its terminal.
@@ -33,6 +35,10 @@ curl -fsSL https://raw.githubusercontent.com/sacx/agentop/main/install.sh | sh -
 | `--from-source` | build with cargo instead of downloading a release binary |
 | `--no-start` | don't start the tray now |
 | `--uninstall` | remove the binary, desktop files and every config change |
+
+i3 with polybar (`--i3 --polybar`): the bar block next to the tray icon, with the tray popup open.
+
+![agentop on i3 with polybar](images/tray-polybar-open.png)
 
 Config edits sit between `# >>> agentop >>>` markers, so re-running the installer is safe. Each
 edited file gets a `*.agentop-bak` backup. From a checkout, run `./install.sh` (it builds
