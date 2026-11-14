@@ -117,6 +117,42 @@ struct Proc {
     ticks: u64,
     start: u64,
     rss_pages: u64,
+    state: char,
+    threads: u32,
+    uid: u32,
+}
+
+/// One row of the process list (only collected with `Scanner::with_procs`).
+#[derive(Clone, Debug)]
+pub struct ProcInfo {
+    pub pid: u32,
+    pub user: String,
+    pub state: char,
+    pub threads: u32,
+    /// CPU % since the previous scan (100 = one core).
+    pub cpu: f32,
+    pub rss_kb: u64,
+    /// Total CPU time used, seconds.
+    pub cpu_time_s: f64,
+    pub comm: String,
+    pub argv: Vec<String>,
+    /// The agent whose process tree this belongs to: (kind, agent root pid).
+    pub agent: Option<(Kind, u32)>,
+}
+
+/// System-wide numbers for the process view header.
+#[derive(Clone, Debug, Default)]
+pub struct SysStat {
+    /// Overall CPU busy %, 0-100 across all cores.
+    pub cpu: f32,
+    pub ncpu: usize,
+    pub mem_total_kb: u64,
+    pub mem_used_kb: u64,
+    pub swap_total_kb: u64,
+    pub swap_used_kb: u64,
+    pub load: [f32; 3],
+    pub tasks: usize,
+    pub running: usize,
 }
 
 /// Smoothed CPU % above which a heuristically-tracked agent counts as busy.
@@ -133,6 +169,11 @@ pub struct Scanner {
     busy_since: HashMap<u32, Instant>,
     argv_cache: HashMap<u32, (u64, Vec<String>)>,
     claude: claude::Cache,
+    want_procs: bool,
+    users: HashMap<u32, String>,
+    prev_cpu: Option<(u64, u64)>,
+    procs: Vec<ProcInfo>,
+    sys: SysStat,
 }
 
 impl Scanner {
@@ -150,7 +191,82 @@ impl Scanner {
             busy_since: HashMap::new(),
             argv_cache: HashMap::new(),
             claude: claude::Cache::default(),
+            want_procs: false,
+            users: HashMap::new(),
+            prev_cpu: None,
+            procs: Vec::new(),
+            sys: SysStat::default(),
         }
+    }
+
+    /// Also collect the full process list and system stats on every scan.
+    pub fn with_procs(mut self) -> Self {
+        self.want_procs = true;
+        self.users = fs::read_to_string("/etc/passwd")
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| {
+                let mut f = l.split(':');
+                let name = f.next()?;
+                let uid = f.nth(1)?.parse().ok()?;
+                Some((uid, name.to_string()))
+            })
+            .collect();
+        self
+    }
+
+    /// Process list from the last scan (moved out; empty until the next scan).
+    pub fn take_procs(&mut self) -> Vec<ProcInfo> {
+        std::mem::take(&mut self.procs)
+    }
+
+    pub fn sys(&self) -> &SysStat {
+        &self.sys
+    }
+
+    fn read_sys(&mut self, procs: &[Proc]) {
+        let stat = fs::read_to_string("/proc/stat").unwrap_or_default();
+        let mut ncpu = 0;
+        for l in stat.lines() {
+            if let Some(rest) = l.strip_prefix("cpu") {
+                if rest.starts_with(' ') {
+                    let v: Vec<u64> = rest.split_whitespace().filter_map(|x| x.parse().ok()).collect();
+                    if v.len() >= 5 {
+                        let total: u64 = v.iter().take(8).sum();
+                        let idle = v[3] + v[4];
+                        if let Some((pt, pi)) = self.prev_cpu {
+                            let (dt, di) = (total.saturating_sub(pt), idle.saturating_sub(pi));
+                            if dt > 0 {
+                                self.sys.cpu = (dt - di.min(dt)) as f32 / dt as f32 * 100.0;
+                            }
+                        }
+                        self.prev_cpu = Some((total, idle));
+                    }
+                } else if rest.starts_with(|c: char| c.is_ascii_digit()) {
+                    ncpu += 1;
+                }
+            }
+        }
+        self.sys.ncpu = ncpu.max(1);
+        let mut m = HashMap::new();
+        for l in fs::read_to_string("/proc/meminfo").unwrap_or_default().lines() {
+            if let Some((k, v)) = l.split_once(':') {
+                if let Some(n) = v.split_whitespace().next().and_then(|x| x.parse::<u64>().ok()) {
+                    m.insert(k.to_string(), n);
+                }
+            }
+        }
+        let g = |k: &str| m.get(k).copied().unwrap_or(0);
+        self.sys.mem_total_kb = g("MemTotal");
+        self.sys.mem_used_kb = g("MemTotal").saturating_sub(g("MemAvailable"));
+        self.sys.swap_total_kb = g("SwapTotal");
+        self.sys.swap_used_kb = g("SwapTotal").saturating_sub(g("SwapFree"));
+        let la = fs::read_to_string("/proc/loadavg").unwrap_or_default();
+        for (i, x) in la.split_whitespace().take(3).enumerate() {
+            self.sys.load[i] = x.parse().unwrap_or(0.0);
+        }
+        self.sys.tasks = procs.len();
+        self.sys.running = procs.iter().filter(|p| p.state == 'R').count();
     }
 
     fn read_procs(&mut self) -> Vec<Proc> {
@@ -178,6 +294,12 @@ impl Scanner {
                 continue; // kernel threads
             }
             let start: u64 = f[19].parse().unwrap_or(0);
+            let uid = if self.want_procs {
+                use std::os::unix::fs::MetadataExt;
+                e.metadata().map(|m| m.uid()).unwrap_or(0)
+            } else {
+                0
+            };
             let argv = match self.argv_cache.get(&pid) {
                 Some((s, a)) if *s == start => a.clone(),
                 _ => {
@@ -202,6 +324,9 @@ impl Scanner {
                 ticks: f[11].parse::<u64>().unwrap_or(0) + f[12].parse::<u64>().unwrap_or(0),
                 start,
                 rss_pages: f[21].parse().unwrap_or(0),
+                state: f[0].chars().next().unwrap_or('?'),
+                threads: f[17].parse().unwrap_or(1),
+                uid,
             });
         }
         self.argv_cache.retain(|p, _| live.contains(p));
@@ -238,6 +363,7 @@ impl Scanner {
             })
             .collect();
 
+        let mut owner: Vec<Option<(Kind, u32)>> = vec![None; procs.len()];
         let mut agents = Vec::new();
         let mut new_ema = HashMap::new();
         let mut seen = HashSet::new();
@@ -266,6 +392,7 @@ impl Scanner {
 
             let (mut dticks, mut rss) = (0u64, 0u64);
             for &t in &tree {
+                owner[t] = Some((kind, p.pid));
                 let q = &procs[t];
                 rss += q.rss_pages * self.page_kb;
                 dticks += match self.prev_ticks.get(&q.pid) {
@@ -354,6 +481,36 @@ impl Scanner {
                 self.busy_since.remove(&p.pid);
             }
             agents.push(a);
+        }
+
+        if self.want_procs {
+            self.read_sys(&procs);
+            let (clk, page_kb) = (self.clk, self.page_kb);
+            let prev = &self.prev_ticks;
+            let users = &self.users;
+            self.procs = procs
+                .iter()
+                .zip(owner)
+                .map(|(q, agent)| {
+                    let d = match prev.get(&q.pid) {
+                        Some(&pt) => q.ticks.saturating_sub(pt),
+                        None if dt.is_some() => q.ticks,
+                        None => 0,
+                    };
+                    ProcInfo {
+                        pid: q.pid,
+                        user: users.get(&q.uid).cloned().unwrap_or_else(|| q.uid.to_string()),
+                        state: q.state,
+                        threads: q.threads,
+                        cpu: dt.map_or(0.0, |t| d as f64 / clk / t * 100.0) as f32,
+                        rss_kb: q.rss_pages * page_kb,
+                        cpu_time_s: q.ticks as f64 / clk,
+                        comm: q.comm.clone(),
+                        argv: q.argv.clone(),
+                        agent,
+                    }
+                })
+                .collect();
         }
 
         self.prev_ticks = procs.iter().map(|p| (p.pid, p.ticks)).collect();

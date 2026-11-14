@@ -16,7 +16,8 @@ const HELP: &str = "\
 agentop — see what your AI agents are doing (claude, codex, gemini, agy, opencode, hermes)
 
 USAGE:
-  agentop [tui]                 interactive dashboard (default)
+  agentop [tui]                 dashboard: agents + process list (default)
+  agentop top                   dashboard opened on the full process list
   agentop tray                  tray icon (StatusNotifierItem or XEmbed, auto-detected)
   agentop polybar               polybar custom/script module (tail = true)
   agentop i3bar                 i3bar block; wrap i3status: `i3status | agentop i3bar`
@@ -25,6 +26,7 @@ USAGE:
   agentop focus <pid>           focus the terminal window of an agent
 
 OPTIONS:
+  --view split|agents|procs     dashboard: start in this tab
   --interval <secs>             refresh interval (tui 1, others 2)
   --short                       bars: one-letter agent names
   --detail                      bars: also show what the latest busy agent is doing
@@ -59,7 +61,13 @@ fn main() {
     };
 
     let res: Result<(), Box<dyn std::error::Error>> = match cmd {
-        "tui" => tui::run(flag("--popup"), interval(1.0)),
+        "tui" | "top" => {
+            let def = if cmd == "top" { tui::View::Procs } else { tui::View::Split };
+            match opt("--view").map(|v| tui::View::parse(&v).ok_or(v)) {
+                Some(Err(v)) => Err(format!("unknown view '{v}' (split, agents, procs)").into()),
+                v => tui::run(flag("--popup"), interval(1.0), v.and_then(Result::ok).unwrap_or(def)),
+            }
+        }
         "tray" => tray::run(
             interval(2.0),
             !flag("--no-notify"),

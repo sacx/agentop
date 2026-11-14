@@ -11,7 +11,9 @@ on X11 and Wayland.
   or a grey ring when everything is idle. Hover or open the menu for the per-agent list, click to
   open the dashboard, and click an agent to jump to its terminal.
 - **Dashboard** (`agentop`): every agent with its session, state, current action, CPU, RAM and
-  busy time, plus a detail pane with the folder, last action and running commands.
+  busy time, plus a top-style process list where each agent's processes are tagged. Three tabs:
+  **Overview** (agents above processes), **Agents** (with a detail pane) and **Processes**
+  (full view).
 - **Notifications** when an agent finishes a long task or needs your input.
 - **Optional bar blocks** for polybar and i3bar.
 
@@ -49,11 +51,27 @@ locally) or `cargo install --path .`. Env overrides: `AGENTOP_BIN_DIR`, `AGENTOP
 
 | command | |
 |---|---|
-| `agentop` | dashboard: `↑↓`/`jk` select · `⏎` focus the agent's terminal · `q` quit |
+| `agentop` | dashboard, opens on the Overview tab (`--view agents\|procs` to start elsewhere) |
+| `agentop top` | dashboard opened on the full process list |
 | `agentop open` | toggle the dashboard in a floating terminal window (class `agentop`) |
 | `agentop tray` | tray icon (started automatically after install) |
 | `agentop status [--json]` | one-shot list, e.g. for scripts |
 | `agentop polybar` / `agentop i3bar` | bar outputs (`--short`, `--detail`, `--no-icons`, `--interval N`) |
+
+Dashboard keys:
+
+| key | |
+|---|---|
+| `1` `2` `3` / `Tab` | Overview · Agents · Processes |
+| `↑↓` `jk` `PgUp/PgDn` `g/G` | select; `←→` switches pane on Overview |
+| `⏎` / `f` | focus the terminal window of the selected agent or process |
+| `c` `m` `t` `p` `n` | sort processes by CPU, memory, CPU time, pid, name (again to reverse) |
+| `a` | only processes that belong to an agent |
+| `/` | filter by pid, user, command or agent name (`Esc` clears) |
+| `K` | send SIGTERM to the selected process (asks first) |
+| `r` / `q` | refresh / quit |
+
+On Overview, selecting an agent highlights its processes in the list below.
 
 Tray click actions:
 

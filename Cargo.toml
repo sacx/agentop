@@ -1,6 +1,6 @@
 [package]
 name = "agentop"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "See what your AI coding agents (claude, codex, gemini, agy, opencode, hermes) are doing: tray icon, polybar/i3bar block and TUI dashboard"
 license = "MIT"
