@@ -94,6 +94,8 @@ pub struct Agent {
     /// Session name (Claude) or project directory name.
     pub name: String,
     pub cwd: String,
+    /// Git repository name containing `cwd`, otherwise the folder name.
+    pub project: String,
     pub status: Status,
     /// Smoothed CPU % of the whole process tree.
     pub cpu: f32,
@@ -174,6 +176,7 @@ pub struct Scanner {
     prev_cpu: Option<(u64, u64)>,
     procs: Vec<ProcInfo>,
     sys: SysStat,
+    projects: HashMap<String, String>,
 }
 
 impl Scanner {
@@ -196,6 +199,7 @@ impl Scanner {
             prev_cpu: None,
             procs: Vec::new(),
             sys: SysStat::default(),
+            projects: HashMap::new(),
         }
     }
 
@@ -222,6 +226,36 @@ impl Scanner {
 
     pub fn sys(&self) -> &SysStat {
         &self.sys
+    }
+
+    fn project(&mut self, cwd: &str) -> String {
+        if let Some(p) = self.projects.get(cwd) {
+            return p.clone();
+        }
+        let home = self.home.as_path();
+        let start = std::path::Path::new(cwd);
+        let mut dir = Some(start);
+        let mut found = None;
+        while let Some(d) = dir {
+            // never treat $HOME or anything above it as a project
+            if d == home || !d.starts_with(home) && d.parent().is_none() {
+                break;
+            }
+            if d.join(".git").exists() {
+                found = Some(d);
+                break;
+            }
+            dir = d.parent();
+        }
+        let p = match found.or(Some(start)).filter(|d| *d != home && !cwd.is_empty()) {
+            Some(d) => d.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "/".into()),
+            None => "~".into(),
+        };
+        if self.projects.len() > 256 {
+            self.projects.clear();
+        }
+        self.projects.insert(cwd.to_string(), p.clone());
+        p
     }
 
     fn read_sys(&mut self, procs: &[Proc]) {
@@ -417,6 +451,7 @@ impl Scanner {
                 kind,
                 pid: p.pid,
                 name: default_name(kind, p, &cwd),
+                project: String::new(),
                 cwd,
                 status: Status::Idle,
                 cpu,
@@ -460,6 +495,7 @@ impl Scanner {
                     a.session_id = Some(s.session_id);
                 }
             }
+            a.project = self.project(&a.cwd);
             a.status = exact.unwrap_or_else(|| {
                 // Heuristic: sustained CPU or a shell command running.
                 // A short hold-off avoids flapping between busy and idle.

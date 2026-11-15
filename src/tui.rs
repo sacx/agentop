@@ -139,7 +139,10 @@ impl App {
                         || q.user.to_lowercase().contains(&f)
                         || q.comm.to_lowercase().contains(&f)
                         || q.argv.iter().any(|a| a.to_lowercase().contains(&f))
-                        || q.agent.is_some_and(|(k, _)| k.label() == f)
+                        || q.agent.is_some_and(|(k, r)| {
+                            k.label() == f
+                                || self.agents.iter().any(|a| a.pid == r && a.project.to_lowercase().contains(&f))
+                        })
                 }
             })
             .collect();
@@ -552,6 +555,8 @@ fn procs_table(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     } else {
         None
     };
+    let projects: std::collections::HashMap<u32, &str> =
+        app.agents.iter().map(|a| (a.pid, a.project.as_str())).collect();
     let rows: Vec<Row> = app
         .visible
         .iter()
@@ -572,8 +577,11 @@ fn procs_table(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 _ => DIM,
             };
             let agent = match p.agent {
-                Some((k, _)) => Span::styled(k.label(), Style::new().fg(hex(k.color()))),
-                None => Span::raw(""),
+                Some((k, root)) => Line::from(vec![
+                    Span::styled(format!("{:<9}", k.label()), Style::new().fg(hex(k.color()))),
+                    Span::styled(projects.get(&root).copied().unwrap_or(""), Style::new().fg(FG)),
+                ]),
+                None => Line::raw(""),
             };
             let name_c = p.agent.map(|(k, _)| hex(k.color())).unwrap_or(FG);
             let (name, args) = match p.argv.split_first() {
@@ -619,7 +627,7 @@ fn procs_table(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         [
             Constraint::Length(7),
             Constraint::Length(9),
-            Constraint::Length(8),
+            Constraint::Length(26),
             Constraint::Length(1),
             Constraint::Length(6),
             Constraint::Length(5),
@@ -630,7 +638,7 @@ fn procs_table(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         ],
     )
     .header(
-        Row::new(["    PID", "USER", "AGENT", "S", "  CPU%", " MEM%", "   RSS", " THR", "   TIME", "COMMAND"])
+        Row::new(["    PID", "USER", "AGENT    PROJECT", "S", "  CPU%", " MEM%", "   RSS", " THR", "   TIME", "COMMAND"])
             .style(Style::new().fg(ACCENT).add_modifier(Modifier::BOLD)),
     )
     .row_highlight_style(Style::new().bg(SEL_BG))
@@ -685,6 +693,7 @@ fn detail(f: &mut Frame, app: &App, area: Rect) {
             Span::styled(a.kind.label(), Style::new().fg(hex(a.kind.color()))),
             v(format!("  pid {}  ·  {} procs  ·  up {}", a.pid, a.procs, util::fmt_dur(a.uptime_s))),
         ]),
+        Line::from(vec![k("project"), v(a.project.clone())]),
         Line::from(vec![k("dir"), v(util::tilde(&a.cwd))]),
     ];
     if let Some(s) = &a.session_id {

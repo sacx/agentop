@@ -11,7 +11,8 @@ on X11 and Wayland.
   or a grey ring when everything is idle. Hover or open the menu for the per-agent list, click to
   open the dashboard, and click an agent to jump to its terminal.
 - **Dashboard** (`agentop`): every agent with its session, state, current action, CPU, RAM and
-  busy time, plus a top-style process list where each agent's processes are tagged. Three tabs:
+  busy time, plus a top-style process list where each agent's processes are tagged with the agent
+  and its project (git repo name, or the folder it was started in). Three tabs:
   **Overview** (agents above processes), **Agents** (with a detail pane) and **Processes**
   (full view).
 - **Notifications** when an agent finishes a long task or needs your input.
@@ -72,6 +73,8 @@ Dashboard keys:
 | `r` / `q` | refresh / quit |
 
 On Overview, selecting an agent highlights its processes in the list below.
+
+![Processes tab, agents only (a)](images/processes.png)
 
 Tray click actions:
 
