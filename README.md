@@ -74,8 +74,6 @@ Dashboard keys:
 
 On Overview, selecting an agent highlights its processes in the list below.
 
-![Processes tab, agents only (a)](images/processes.png)
-
 Tray click actions:
 
 | backend | left-click | right-click / menu | hover |
